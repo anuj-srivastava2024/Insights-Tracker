@@ -3,7 +3,6 @@ import json
 import os
 from datetime import date, datetime
 
-# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Trade Contract Tracker",
     page_icon="📊",
@@ -23,7 +22,6 @@ TAGS = {
     "Bearish":        "#f97316",
 }
 
-# ── Persistence ───────────────────────────────────────────────────────────────
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
@@ -34,101 +32,88 @@ def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2, default=str)
 
-# ── Session state ─────────────────────────────────────────────────────────────
 if "db" not in st.session_state:
     st.session_state.db = load_data()
 if "current_page" not in st.session_state:
     st.session_state.current_page = None
-# active_cell = (date_str, col) or None
-if "active_cell" not in st.session_state:
-    st.session_state.active_cell = None
-# unsaved edits: { "date__col": {"text": ..., "tags": [...]} }
 if "edits" not in st.session_state:
-    st.session_state.edits = {}
+    st.session_state.edits = {}   # key "dstr__col" -> {"text":..,"tags":[..]}
 if "has_unsaved" not in st.session_state:
     st.session_state.has_unsaved = False
 
 db = st.session_state.db
 
-# ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Sora:wght@300;400;600;700&display=swap');
-
 html, body, [class*="css"] { font-family: 'Sora', sans-serif; }
 
-section[data-testid="stSidebar"] { background: #0f172a; border-right: 1px solid #1e293b; }
-section[data-testid="stSidebar"] * { color: #e2e8f0 !important; }
+section[data-testid="stSidebar"] { background:#0f172a; border-right:1px solid #1e293b; }
+section[data-testid="stSidebar"] * { color:#e2e8f0 !important; }
 section[data-testid="stSidebar"] .stButton button {
-    background: #1e293b; border: 1px solid #334155; color: #e2e8f0 !important;
-    border-radius: 6px; font-size: 13px; text-align: left;
-    width: 100%; margin-bottom: 4px; transition: all .15s;
+    background:#1e293b; border:1px solid #334155; color:#e2e8f0 !important;
+    border-radius:6px; font-size:13px; width:100%; margin-bottom:4px;
 }
-section[data-testid="stSidebar"] .stButton button:hover { background: #334155; border-color: #6366f1; }
+section[data-testid="stSidebar"] .stButton button:hover { background:#334155; border-color:#6366f1; }
 
-.main { background: #0f172a; }
+.main { background:#0f172a; }
 
-/* ── tracker table ── */
-.tracker-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: auto; }
-.tracker-table th {
-    background: #1e293b; color: #94a3b8;
-    padding: 10px 14px; border: 1px solid #334155;
-    font-family: 'JetBrains Mono', monospace; font-size: 11px;
-    text-transform: uppercase; letter-spacing: .08em;
-    min-width: 160px; position: sticky; top: 0; z-index: 2;
+/* col header box */
+.col-header {
+    background:#1e293b; color:#94a3b8;
+    padding:8px 12px; border:1px solid #334155;
+    font-family:'JetBrains Mono',monospace; font-size:11px;
+    text-transform:uppercase; letter-spacing:.08em;
+    text-align:center; border-radius:6px 6px 0 0;
+    margin-bottom:2px;
 }
-.tracker-table td {
-    border: 1px solid #1e293b; padding: 0;
-    vertical-align: top; background: #0f172a;
-    min-width: 160px;
+.date-header {
+    background:#1e293b; color:#6366f1;
+    padding:10px 12px; border:1px solid #334155;
+    font-family:'JetBrains Mono',monospace; font-size:12px;
+    font-weight:600; border-radius:6px; white-space:nowrap;
+    text-align:center;
 }
-.tracker-table td.date-cell {
-    background: #1e293b; color: #6366f1;
-    font-family: 'JetBrains Mono', monospace; font-size: 12px;
-    font-weight: 600; white-space: nowrap; padding: 10px 14px;
-    min-width: 170px;
-}
-.tracker-table tr:hover td { background: #0d1525; }
-.tracker-table tr:hover td.date-cell { background: #1a2744; }
 
-/* cell inner */
-.cell-view {
-    padding: 8px 12px; min-height: 44px; cursor: pointer;
-    transition: background .12s;
-}
-.cell-view:hover { background: #1a2232 !important; }
-.cell-view.active { background: #1e1b4b !important; border: none; outline: 2px solid #6366f1; outline-offset: -2px; }
-.cell-placeholder { color: #334155; font-size: 12px; }
-
-/* tags */
+/* tag pills */
 .tag-pill {
-    display: inline-block; padding: 2px 9px; border-radius: 20px;
-    font-size: 11px; font-weight: 600; margin: 2px 2px 2px 0;
-    color: #fff; letter-spacing: .04em;
+    display:inline-block; padding:2px 9px; border-radius:20px;
+    font-size:11px; font-weight:600; margin:2px 2px 2px 0;
+    color:#fff; letter-spacing:.04em;
 }
 
 /* save banner */
 .save-banner {
-    background: #1e1b4b; border: 1px solid #6366f1;
-    border-radius: 8px; padding: 10px 16px; margin-bottom: 14px;
-    display: flex; align-items: center; gap: 12px;
-    color: #a5b4fc; font-size: 13px;
+    background:#1e1b4b; border:1px solid #6366f1; border-radius:8px;
+    padding:10px 16px; margin-bottom:14px; color:#a5b4fc; font-size:13px;
 }
 
-/* buttons */
+/* row separator */
+.row-sep { border-top:1px solid #1e293b; margin:6px 0 10px; }
+
 .stButton button {
-    background: #1e293b !important; color: #e2e8f0 !important;
-    border: 1px solid #334155 !important; border-radius: 6px !important;
+    background:#1e293b !important; color:#e2e8f0 !important;
+    border:1px solid #334155 !important; border-radius:6px !important;
 }
-.stButton button:hover { border-color: #6366f1 !important; background: #334155 !important; }
+.stButton button:hover { border-color:#6366f1 !important; background:#334155 !important; }
 
-/* inputs */
-.stTextInput input, .stTextArea textarea {
-    background: #1e293b !important; color: #e2e8f0 !important; border-color: #334155 !important;
+/* shrink textarea padding */
+.stTextArea textarea {
+    background:#111827 !important; color:#e2e8f0 !important;
+    border-color:#334155 !important; font-size:13px !important;
+    min-height:80px !important;
 }
+.stTextArea textarea:focus { border-color:#6366f1 !important; box-shadow:none !important; }
 
-.page-title { font-size: 26px; font-weight: 700; color: #e2e8f0; letter-spacing: -.02em; margin-bottom: 4px; }
-.page-sub { font-size: 12px; color: #475569; font-family: 'JetBrains Mono', monospace; margin-bottom: 16px; }
+/* multiselect */
+[data-baseweb="select"] { background:#111827 !important; }
+[data-baseweb="tag"] { background:#334155 !important; color:#e2e8f0 !important; }
+
+.page-title { font-size:26px; font-weight:700; color:#e2e8f0; letter-spacing:-.02em; margin-bottom:4px; }
+.page-sub { font-size:12px; color:#475569; font-family:'JetBrains Mono',monospace; margin-bottom:16px; }
+
+/* hide streamlit widget labels we don't need */
+.hide-label label { display:none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -157,7 +142,6 @@ with st.sidebar:
         with c1:
             if st.button(f"📄 {pg}", key=f"nav_{pg}"):
                 st.session_state.current_page = pg
-                st.session_state.active_cell = None
                 st.session_state.edits = {}
                 st.session_state.has_unsaved = False
                 st.rerun()
@@ -191,12 +175,12 @@ page_data = db[page]
 st.markdown(f'<div class="page-title">📄 {page}</div>', unsafe_allow_html=True)
 st.markdown(f'<div class="page-sub">observation tracker • {len(page_data["rows"])} rows</div>', unsafe_allow_html=True)
 
-# ── Universal Save button (shown when there are unsaved changes) ──────────────
+# ── Universal Save Banner ─────────────────────────────────────────────────────
 if st.session_state.has_unsaved:
-    sb1, sb2, sb3 = st.columns([2, 1, 6])
-    with sb1:
+    st.markdown(f'<div class="save-banner">⚠️ <b>{len(st.session_state.edits)}</b> unsaved cell(s) — hit <b>💾 Save All</b> when done.</div>', unsafe_allow_html=True)
+    s1, s2 = st.columns([1, 1])
+    with s1:
         if st.button("💾 Save All Changes", type="primary"):
-            # flush all edits into db
             for key, val in st.session_state.edits.items():
                 dstr, col = key.split("__", 1)
                 if dstr not in page_data["rows"]:
@@ -205,44 +189,41 @@ if st.session_state.has_unsaved:
             save_data(db)
             st.session_state.edits = {}
             st.session_state.has_unsaved = False
-            st.session_state.active_cell = None
-            st.success("✅ All changes saved!")
+            st.success("✅ Saved!")
             st.rerun()
-    with sb2:
-        if st.button("✖ Discard"):
+    with s2:
+        if st.button("✖ Discard All"):
             st.session_state.edits = {}
             st.session_state.has_unsaved = False
-            st.session_state.active_cell = None
             st.rerun()
-    st.markdown(f'<div class="save-banner">⚠️ You have <b>{len(st.session_state.edits)}</b> unsaved cell(s). Click <b>Save All Changes</b> when done editing.</div>', unsafe_allow_html=True)
 
-# ── Column management ─────────────────────────────────────────────────────────
+# ── Manage Columns ────────────────────────────────────────────────────────────
 with st.expander("⚙️ Manage Columns", expanded=len(page_data["columns"]) == 0):
     cu1, cu2 = st.columns([4, 1])
     with cu1:
-        new_col = st.text_input("Column name (contract)", placeholder="e.g. NQ Dec-24", key="new_col")
+        new_col = st.text_input("Contract / column name", placeholder="e.g. NQ Dec-24", key="new_col")
     with cu2:
         st.write(""); st.write("")
-        if st.button("Add Column") and new_col.strip():
-            col_name = new_col.strip()
-            if col_name not in page_data["columns"]:
-                page_data["columns"].append(col_name)
+        if st.button("Add") and new_col.strip():
+            cn = new_col.strip()
+            if cn not in page_data["columns"]:
+                page_data["columns"].append(cn)
                 save_data(db)
                 st.rerun()
     if page_data["columns"]:
-        remove_col = st.selectbox("Remove column", ["—"] + page_data["columns"], key="remove_col")
-        if st.button("Remove") and remove_col != "—":
-            page_data["columns"].remove(remove_col)
+        rc = st.selectbox("Remove column", ["—"] + page_data["columns"], key="remove_col")
+        if st.button("Remove") and rc != "—":
+            page_data["columns"].remove(rc)
             for rd in page_data["rows"].values():
-                rd.pop(remove_col, None)
+                rd.pop(rc, None)
             save_data(db)
             st.rerun()
 
-# ── Add date row ──────────────────────────────────────────────────────────────
+# ── Add Date Row ──────────────────────────────────────────────────────────────
 with st.expander("➕ Add Date Row", expanded=False):
     dc1, dc2 = st.columns([3, 1])
     with dc1:
-        chosen_date = st.date_input("Pick a date", value=date.today(), key="date_picker")
+        chosen_date = st.date_input("Date", value=date.today(), key="date_picker")
     with dc2:
         st.write(""); st.write("")
         if st.button("Add Row"):
@@ -253,147 +234,95 @@ with st.expander("➕ Add Date Row", expanded=False):
             st.rerun()
 
 if not page_data["columns"]:
-    st.info("Add at least one contract column above to start tracking.")
+    st.info("Add at least one contract column above.")
     st.stop()
 
 if not page_data["rows"]:
     st.info("Add a date row to begin entering observations.")
     st.stop()
 
-# ── Build interactive table ───────────────────────────────────────────────────
+# ── THE GRID ──────────────────────────────────────────────────────────────────
 sorted_dates = sorted(page_data["rows"].keys())
-active = st.session_state.active_cell   # (dstr, col) or None
+cols_list = page_data["columns"]
+N = len(cols_list)
 
-# Header row
-header_html = '<th>📅 Date</th>' + "".join(f"<th>{c}</th>" for c in page_data["columns"])
+# Column headers: date col + one per contract
+# widths: date col is ~1.4 units, others equal
+col_widths = [1.4] + [2] * N
+header_cols = st.columns(col_widths)
+header_cols[0].markdown('<div class="col-header">📅 Date</div>', unsafe_allow_html=True)
+for i, col in enumerate(cols_list):
+    header_cols[i + 1].markdown(f'<div class="col-header">{col}</div>', unsafe_allow_html=True)
 
-# We render the table as HTML for display, but place Streamlit widgets
-# for the active cell inline using st.columns layout below the table.
+st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
 
-table_rows_html = ""
+# One row per date
 for dstr in sorted_dates:
     row_data = page_data["rows"][dstr]
     try:
         d = datetime.strptime(dstr, "%Y-%m-%d")
-        date_display = d.strftime("%a, %b %d %Y")
+        date_display = d.strftime("%a\n%b %d\n%Y")
     except:
         date_display = dstr
 
-    row_cells = f'<td class="date-cell">📅 {date_display}</td>'
-    for col in page_data["columns"]:
+    row_cols = st.columns(col_widths)
+
+    # Date cell
+    with row_cols[0]:
+        st.markdown(f'<div class="date-header">{date_display}</div>', unsafe_allow_html=True)
+
+    # Data cells — each is a text area + multiselect tag picker
+    for i, col in enumerate(cols_list):
         edit_key = f"{dstr}__{col}"
-        # Use edited value if exists, else db value
+        # resolve current value: draft > saved
         if edit_key in st.session_state.edits:
-            cell = st.session_state.edits[edit_key]
+            current = st.session_state.edits[edit_key]
         else:
-            cell = row_data.get(col, {"text": "", "tags": []})
+            current = row_data.get(col, {"text": "", "tags": []})
 
-        text = cell.get("text", "")
-        tags = cell.get("tags", [])
-        is_active = (active == (dstr, col))
+        with row_cols[i + 1]:
+            # Text area — directly editable
+            new_text = st.text_area(
+                label=edit_key,
+                value=current.get("text", ""),
+                key=f"txt_{edit_key}",
+                placeholder="Write observation…",
+                label_visibility="collapsed",
+                height=100,
+            )
+            # Tag picker
+            new_tags = st.multiselect(
+                label=f"tags_{edit_key}",
+                options=list(TAGS.keys()),
+                default=current.get("tags", []),
+                key=f"tags_{edit_key}",
+                label_visibility="collapsed",
+                placeholder="Add tags…",
+            )
+            # show tag previews
+            if new_tags:
+                st.markdown(
+                    "".join(f'<span class="tag-pill" style="background:{TAGS[t]}">{t}</span>' for t in new_tags),
+                    unsafe_allow_html=True
+                )
 
-        tags_html = "".join(
-            f'<span class="tag-pill" style="background:{TAGS.get(t,"#555")}">{t}</span>'
-            for t in tags
-        )
-        if tags or text:
-            content_inner = f"{tags_html}<div style='margin-top:4px;color:#cbd5e1;font-size:13px;white-space:pre-wrap'>{text}</div>"
-        else:
-            content_inner = '<span class="cell-placeholder">click to edit</span>'
+        # Track changes into edits dict
+        draft = {"text": new_text, "tags": new_tags}
+        saved = row_data.get(col, {"text": "", "tags": []})
+        if draft != saved:
+            st.session_state.edits[edit_key] = draft
+            st.session_state.has_unsaved = True
+        elif edit_key in st.session_state.edits:
+            # reverted to original — remove from edits
+            del st.session_state.edits[edit_key]
+            if not st.session_state.edits:
+                st.session_state.has_unsaved = False
 
-        active_class = "active" if is_active else ""
-        row_cells += f'<td><div class="cell-view {active_class}">{content_inner}</div></td>'
-
-    table_rows_html += f"<tr>{row_cells}</tr>"
-
-st.markdown(f"""
-<div style="overflow-x:auto;border-radius:10px;border:1px solid #1e293b;margin-bottom:4px;">
-<table class="tracker-table">
-  <thead><tr>{header_html}</tr></thead>
-  <tbody>{table_rows_html}</tbody>
-</table>
-</div>
-""", unsafe_allow_html=True)
-
-# ── Click selector — replaces "double click" in Streamlit ────────────────────
-st.markdown("<div style='font-size:12px;color:#475569;margin-bottom:6px;'>👆 Click a cell to edit — select the row & column below</div>", unsafe_allow_html=True)
-
-sel_cols = st.columns([2, 2, 1])
-with sel_cols[0]:
-    sel_date = st.selectbox(
-        "Row (date)", sorted_dates, key="sel_date",
-        format_func=lambda d: datetime.strptime(d, "%Y-%m-%d").strftime("%a, %b %d %Y"),
-        label_visibility="collapsed"
-    )
-with sel_cols[1]:
-    sel_col = st.selectbox("Column", page_data["columns"], key="sel_col", label_visibility="collapsed")
-with sel_cols[2]:
-    if st.button("✏️ Open"):
-        st.session_state.active_cell = (sel_date, sel_col)
-        st.rerun()
-
-# ── Inline cell editor (appears when a cell is active) ───────────────────────
-if active:
-    adate, acol = active
-    edit_key = f"{adate}__{acol}"
-
-    # Pull current value: edited draft > db
-    if edit_key in st.session_state.edits:
-        current = st.session_state.edits[edit_key]
-    else:
-        current = page_data["rows"].get(adate, {}).get(acol, {"text": "", "tags": []})
-
-    try:
-        d = datetime.strptime(adate, "%Y-%m-%d")
-        cell_label = d.strftime("%a, %b %d %Y")
-    except:
-        cell_label = adate
-
-    st.markdown(f"<div style='margin:12px 0 6px;font-size:13px;color:#a5b4fc;font-weight:600;'>✏️ Editing: <code>{cell_label}</code> × <b>{acol}</b></div>", unsafe_allow_html=True)
-
-    ec1, ec2 = st.columns([3, 2])
-    with ec1:
-        new_text = st.text_area(
-            "Notes", value=current.get("text", ""),
-            height=110, key=f"edit_text_{edit_key}",
-            placeholder="Type your observation here…",
-            label_visibility="collapsed"
-        )
-    with ec2:
-        new_tags = st.multiselect(
-            "Tags", options=list(TAGS.keys()),
-            default=current.get("tags", []),
-            key=f"edit_tags_{edit_key}",
-            label_visibility="collapsed"
-        )
-        # preview tags
-        if new_tags:
-            st.markdown("".join(
-                f'<span class="tag-pill" style="background:{TAGS[t]}">{t}</span>'
-                for t in new_tags
-            ), unsafe_allow_html=True)
-
-    # Update draft in real time (on any widget interaction Streamlit reruns)
-    draft = {"text": new_text, "tags": new_tags}
-    if draft != current:
-        st.session_state.edits[edit_key] = draft
-        st.session_state.has_unsaved = True
-
-    btn1, btn2 = st.columns([1, 8])
-    with btn1:
-        if st.button("Close ✖"):
-            st.session_state.active_cell = None
+    # Row separator + delete button
+    with st.expander("", expanded=False):
+        if st.button(f"🗑 Delete row {dstr}", key=f"del_row_{dstr}"):
+            del page_data["rows"][dstr]
+            save_data(db)
             st.rerun()
 
-st.markdown("---")
-
-# ── Delete row ────────────────────────────────────────────────────────────────
-with st.expander("🗑️ Delete a Date Row"):
-    del_date = st.selectbox(
-        "Select row", sorted_dates, key="del_date",
-        format_func=lambda d: datetime.strptime(d, "%Y-%m-%d").strftime("%a, %b %d %Y")
-    )
-    if st.button("Delete Row", type="primary"):
-        del page_data["rows"][del_date]
-        save_data(db)
-        st.rerun()
+    st.markdown('<div class="row-sep"></div>', unsafe_allow_html=True)
