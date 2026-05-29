@@ -97,13 +97,15 @@ section[data-testid="stSidebar"] .stButton button:hover { background:#334155; bo
 }
 .stButton button:hover { border-color:#6366f1 !important; background:#334155 !important; }
 
-/* shrink textarea padding */
+
 .stTextArea textarea {
     background:#111827 !important; color:#e2e8f0 !important;
     border-color:#334155 !important; font-size:13px !important;
-    min-height:80px !important;
+    min-height:60px !important; overflow-y:hidden !important;
+    resize:none !important; line-height:1.5 !important;
 }
 .stTextArea textarea:focus { border-color:#6366f1 !important; box-shadow:none !important; }
+[data-testid="column"] { align-items:stretch; }
 
 /* multiselect */
 [data-baseweb="select"] { background:#111827 !important; }
@@ -290,7 +292,7 @@ for dstr in sorted_dates:
                 label_visibility="collapsed",
                 height=100,
             )
-            # Tag picker
+            # Tag picker only — no separate preview (tags already show inside multiselect)
             new_tags = st.multiselect(
                 label=f"tags_{edit_key}",
                 options=list(TAGS.keys()),
@@ -299,12 +301,6 @@ for dstr in sorted_dates:
                 label_visibility="collapsed",
                 placeholder="Add tags…",
             )
-            # show tag previews
-            if new_tags:
-                st.markdown(
-                    "".join(f'<span class="tag-pill" style="background:{TAGS[t]}">{t}</span>' for t in new_tags),
-                    unsafe_allow_html=True
-                )
 
         # Track changes into edits dict
         draft = {"text": new_text, "tags": new_tags}
@@ -326,3 +322,25 @@ for dstr in sorted_dates:
             st.rerun()
 
     st.markdown('<div class="row-sep"></div>', unsafe_allow_html=True)
+
+# ── Auto-resize textareas via JS ──────────────────────────────────────────────
+st.markdown("""
+<script>
+function autoResize() {
+    document.querySelectorAll('textarea').forEach(function(ta) {
+        if (ta._autoResizeAttached) return;
+        ta._autoResizeAttached = true;
+        function resize() {
+            ta.style.height = 'auto';
+            ta.style.height = (ta.scrollHeight) + 'px';
+        }
+        ta.addEventListener('input', resize);
+        resize();
+    });
+}
+// Run on load and whenever Streamlit re-renders
+const observer = new MutationObserver(autoResize);
+observer.observe(document.body, { childList: true, subtree: true });
+autoResize();
+</script>
+""", unsafe_allow_html=True)
