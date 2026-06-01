@@ -2,6 +2,8 @@ import streamlit as st
 import json
 import os
 from datetime import date, datetime
+import pandas as pd
+from io import BytesIO
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -34,15 +36,83 @@ def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2, default=str)
 
+def export_to_excel(db):
+    """Convert entire DB to Excel — one sheet per page."""
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        for page_name, page_data in db.items():
+            columns = page_data.get("columns", [])
+            rows = page_data.get("rows", {})
+            if not columns and not rows:
+                continue
+
+            records = []
+            for dstr in sorted(rows.keys()):
+                try:
+                    d = datetime.strptime(dstr, "%Y-%m-%d")
+                    date_display = d.strftime("%a, %b %d %Y")
+                except:
+                    date_display = dstr
+
+                row_record = {"Date": date_display}
+                for col in columns:
+                    cell = rows[dstr].get(col, {"text": "", "tags": []})
+                    text = cell.get("text", "")
+                    tags = ", ".join(cell.get("tags", []))
+                    # Put text and tags together in one cell, tags on new line if present
+                    row_record[col] = f"{text}\n[{tags}]" if tags else text
+                records.append(row_record)
+
+            if not records:
+                records = [{"Date": "No data yet"}]
+
+            df = pd.DataFrame(records)
+            # Sheet name max 31 chars, no special chars
+            sheet_name = page_name[:31].replace("/", "-").replace("\\", "-").replace("*", "").replace("?", "").replace("[", "").replace("]", "").replace(":", "")
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+            # Style the sheet
+            ws = writer.sheets[sheet_name]
+            from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+            from openpyxl.utils import get_column_letter
+
+            header_fill = PatternFill("solid", fgColor="1E293B")
+            header_font = Font(color="94A3B8", bold=True, size=10)
+            date_fill   = PatternFill("solid", fgColor="1E293B")
+            date_font   = Font(color="6366F1", bold=True, size=10)
+            cell_font   = Font(color="E2E8F0", size=10)
+            thin_border = Border(
+                left=Side(style="thin", color="334155"),
+                right=Side(style="thin", color="334155"),
+                top=Side(style="thin", color="334155"),
+                bottom=Side(style="thin", color="334155"),
+            )
+
+            for col_idx, cell in enumerate(ws[1], 1):
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                cell.border = thin_border
+                ws.column_dimensions[get_column_letter(col_idx)].width = 12 if col_idx == 1 else 30
+
+            for row in ws.iter_rows(min_row=2):
+                for col_idx, cell in enumerate(row, 1):
+                    cell.font = date_font if col_idx == 1 else cell_font
+                    cell.fill = date_fill if col_idx == 1 else PatternFill("solid", fgColor="0F172A")
+                    cell.alignment = Alignment(vertical="top", wrap_text=True)
+                    cell.border = thin_border
+                ws.row_dimensions[row[0].row].height = 60
+
+    output.seek(0)
+    return output
+
 # ── Session state ─────────────────────────────────────────────────────────────
 if "db" not in st.session_state:
     st.session_state.db = load_data()
 if "current_page" not in st.session_state:
     st.session_state.current_page = None
-# active_cell = (date_str, col) or None
 if "active_cell" not in st.session_state:
     st.session_state.active_cell = None
-# unsaved edits: { "date__col": {"text": ..., "tags": [...]} }
 if "edits" not in st.session_state:
     st.session_state.edits = {}
 if "has_unsaved" not in st.session_state:
@@ -68,7 +138,6 @@ section[data-testid="stSidebar"] .stButton button:hover { background: #334155; b
 
 .main { background: #0f172a; }
 
-/* ── tracker table ── */
 .tracker-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: auto; }
 .tracker-table th {
     background: #1e293b; color: #94a3b8;
@@ -91,23 +160,17 @@ section[data-testid="stSidebar"] .stButton button:hover { background: #334155; b
 .tracker-table tr:hover td { background: #0d1525; }
 .tracker-table tr:hover td.date-cell { background: #1a2744; }
 
-/* cell inner */
-.cell-view {
-    padding: 8px 12px; min-height: 44px; cursor: pointer;
-    transition: background .12s;
-}
+.cell-view { padding: 8px 12px; min-height: 44px; cursor: pointer; transition: background .12s; }
 .cell-view:hover { background: #1a2232 !important; }
 .cell-view.active { background: #1e1b4b !important; border: none; outline: 2px solid #6366f1; outline-offset: -2px; }
 .cell-placeholder { color: #334155; font-size: 12px; }
 
-/* tags */
 .tag-pill {
     display: inline-block; padding: 2px 9px; border-radius: 20px;
     font-size: 11px; font-weight: 600; margin: 2px 2px 2px 0;
     color: #fff; letter-spacing: .04em;
 }
 
-/* save banner */
 .save-banner {
     background: #1e1b4b; border: 1px solid #6366f1;
     border-radius: 8px; padding: 10px 16px; margin-bottom: 14px;
@@ -115,14 +178,12 @@ section[data-testid="stSidebar"] .stButton button:hover { background: #334155; b
     color: #a5b4fc; font-size: 13px;
 }
 
-/* buttons */
 .stButton button {
     background: #1e293b !important; color: #e2e8f0 !important;
     border: 1px solid #334155 !important; border-radius: 6px !important;
 }
 .stButton button:hover { border-color: #6366f1 !important; background: #334155 !important; }
 
-/* inputs */
 .stTextInput input, .stTextArea textarea {
     background: #1e293b !important; color: #e2e8f0 !important; border-color: #334155 !important;
 }
@@ -170,6 +231,31 @@ with st.sidebar:
                 st.rerun()
 
     st.markdown("---")
+
+    # ── Download buttons ──────────────────────────────────────────────────────
+    st.markdown("**⬇️ Export Data**")
+
+    # Excel — all pages, one sheet each
+    if db:
+        excel_data = export_to_excel(db)
+        st.download_button(
+            label="📊 Download as Excel",
+            data=excel_data,
+            file_name=f"trade_tracker_{date.today()}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+
+    # JSON backup
+    st.download_button(
+        label="🗂 Download as JSON",
+        data=json.dumps(db, indent=2, default=str),
+        file_name=f"trade_tracker_{date.today()}.json",
+        mime="application/json",
+        use_container_width=True,
+    )
+
+    st.markdown("---")
     st.markdown("**Tag Legend**")
     for tag, color in TAGS.items():
         st.markdown(f'<span class="tag-pill" style="background:{color}">{tag}</span>', unsafe_allow_html=True)
@@ -191,12 +277,11 @@ page_data = db[page]
 st.markdown(f'<div class="page-title">📄 {page}</div>', unsafe_allow_html=True)
 st.markdown(f'<div class="page-sub">observation tracker • {len(page_data["rows"])} rows</div>', unsafe_allow_html=True)
 
-# ── Universal Save button (shown when there are unsaved changes) ──────────────
+# ── Universal Save ────────────────────────────────────────────────────────────
 if st.session_state.has_unsaved:
     sb1, sb2, sb3 = st.columns([2, 1, 6])
     with sb1:
         if st.button("💾 Save All Changes", type="primary"):
-            # flush all edits into db
             for key, val in st.session_state.edits.items():
                 dstr, col = key.split("__", 1)
                 if dstr not in page_data["rows"]:
@@ -260,17 +345,13 @@ if not page_data["rows"]:
     st.info("Add a date row to begin entering observations.")
     st.stop()
 
-# ── Build interactive table ───────────────────────────────────────────────────
+# ── Table ─────────────────────────────────────────────────────────────────────
 sorted_dates = sorted(page_data["rows"].keys())
-active = st.session_state.active_cell   # (dstr, col) or None
+active = st.session_state.active_cell
 
-# Header row
 header_html = '<th>📅 Date</th>' + "".join(f"<th>{c}</th>" for c in page_data["columns"])
-
-# We render the table as HTML for display, but place Streamlit widgets
-# for the active cell inline using st.columns layout below the table.
-
 table_rows_html = ""
+
 for dstr in sorted_dates:
     row_data = page_data["rows"][dstr]
     try:
@@ -282,7 +363,6 @@ for dstr in sorted_dates:
     row_cells = f'<td class="date-cell">📅 {date_display}</td>'
     for col in page_data["columns"]:
         edit_key = f"{dstr}__{col}"
-        # Use edited value if exists, else db value
         if edit_key in st.session_state.edits:
             cell = st.session_state.edits[edit_key]
         else:
@@ -315,8 +395,8 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Click selector — replaces "double click" in Streamlit ────────────────────
-st.markdown("<div style='font-size:12px;color:#475569;margin-bottom:6px;'>👆 Click a cell to edit — select the row & column below</div>", unsafe_allow_html=True)
+# ── Cell selector ─────────────────────────────────────────────────────────────
+st.markdown("<div style='font-size:12px;color:#475569;margin-bottom:6px;'>👆 Select row & column to edit a cell</div>", unsafe_allow_html=True)
 
 sel_cols = st.columns([2, 2, 1])
 with sel_cols[0]:
@@ -332,12 +412,11 @@ with sel_cols[2]:
         st.session_state.active_cell = (sel_date, sel_col)
         st.rerun()
 
-# ── Inline cell editor (appears when a cell is active) ───────────────────────
+# ── Cell editor ───────────────────────────────────────────────────────────────
 if active:
     adate, acol = active
     edit_key = f"{adate}__{acol}"
 
-    # Pull current value: edited draft > db
     if edit_key in st.session_state.edits:
         current = st.session_state.edits[edit_key]
     else:
@@ -366,24 +445,20 @@ if active:
             key=f"edit_tags_{edit_key}",
             label_visibility="collapsed"
         )
-        # preview tags
         if new_tags:
             st.markdown("".join(
                 f'<span class="tag-pill" style="background:{TAGS[t]}">{t}</span>'
                 for t in new_tags
             ), unsafe_allow_html=True)
 
-    # Update draft in real time (on any widget interaction Streamlit reruns)
     draft = {"text": new_text, "tags": new_tags}
     if draft != current:
         st.session_state.edits[edit_key] = draft
         st.session_state.has_unsaved = True
 
-    btn1, btn2 = st.columns([1, 8])
-    with btn1:
-        if st.button("Close ✖"):
-            st.session_state.active_cell = None
-            st.rerun()
+    if st.button("Close ✖"):
+        st.session_state.active_cell = None
+        st.rerun()
 
 st.markdown("---")
 
