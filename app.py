@@ -4,7 +4,7 @@ import os
 from datetime import date, datetime
 import pandas as pd
 from io import BytesIO
-import google.generativeai as genai
+from groq import Groq
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -127,17 +127,17 @@ def build_tracker_context(db, focus_page=None):
     lines.append("\n=== END OF TRACKER DATA ===")
     return "\n".join(lines)
 
-# ── Call Gemini API ───────────────────────────────────────────────────────────
+# ── Call Groq API ─────────────────────────────────────────────────────────────
 def ask_claude(messages, tracker_context):
-    """Uses Gemini but kept as ask_claude so rest of code stays unchanged."""
-    api_key = st.secrets.get("GEMINI_API_KEY", "")
+    """Uses Groq/Llama — free, no region restrictions."""
+    api_key = st.secrets.get("GROQ_API_KEY", "")
     if not api_key:
-        return "⚠️ No Gemini API key found. Add `GEMINI_API_KEY` to your Streamlit secrets."
+        return "⚠️ No Groq API key found. Add GROQ_API_KEY to your Streamlit secrets."
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            model_name="models/gemini-1.5-flash",
-            system_instruction=f"""You are an expert commodity and futures trade analyst assistant.
+        client = Groq(api_key=api_key)
+        system_msg = {
+            "role": "system",
+            "content": f"""You are an expert commodity and futures trade analyst assistant.
 You have access to the user's trade observation tracker data below.
 Each page represents a trading session log. Each column is a contract/product.
 Observations include free-text notes and tags: Absorption, Iceberg, Tool, Extreme Delta, Extreme Volume, Bullish, Bearish.
@@ -155,19 +155,16 @@ Be specific — reference actual dates, contracts, and observations from the dat
 When suggesting trades, always explain your reasoning based on the patterns you see.
 
 {tracker_context}"""
+        }
+        all_messages = [system_msg] + messages
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=1500,
+            messages=all_messages,
         )
-        # Convert message history to Gemini format
-        history = []
-        for msg in messages[:-1]:  # all except last
-            role = "user" if msg["role"] == "user" else "model"
-            history.append({"role": role, "parts": [msg["content"]]})
-
-        chat = model.start_chat(history=history)
-        last_msg = messages[-1]["content"] if messages else ""
-        response = chat.send_message(last_msg)
-        return response.text
+        return response.choices[0].message.content
     except Exception as e:
-        return f"⚠️ Gemini API error: {e}"
+        return f"⚠️ Groq API error: {e}"
 
 # ── Session state ─────────────────────────────────────────────────────────────
 if "db" not in st.session_state:
@@ -507,7 +504,7 @@ with tab_tracker:
 # ════════════════════════════════════════════════════════════════════
 with tab_chat:
     st.markdown('<div class="page-title">🤖 AI Trade Analyst</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-sub">Ask Gemini anything about your tracker data — it reads all your observations before answering.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-sub">Ask the AI anything about your tracker data — it reads all your observations before answering.</div>', unsafe_allow_html=True)
 
     # Focus selector
     cf1, cf2 = st.columns([3, 1])
@@ -517,7 +514,7 @@ with tab_chat:
             "📂 Analyse data from:",
             focus_options,
             key="chat_focus_select",
-            help="Narrow Gemini's context to one page, or give it everything."
+            help="Narrow the AI's context to one page, or give it everything."
         )
     with cf2:
         st.write("")
@@ -540,7 +537,7 @@ with tab_chat:
                 st.session_state.chat_messages.append({"role": "user", "content": qp})
                 focus_page = None if focus == "All Pages" else focus
                 context = build_tracker_context(db, focus_page)
-                with st.spinner("Gemini is analysing your data…"):
+                with st.spinner("Analysing your trade data…"):
                     reply = ask_claude(st.session_state.chat_messages, context)
                 st.session_state.chat_messages.append({"role": "assistant", "content": reply})
                 st.rerun()
@@ -563,7 +560,7 @@ with tab_chat:
             else:
                 # convert newlines to <br> for HTML display
                 content = msg["content"].replace("\n", "<br>")
-                chat_html += f'<div class="chat-label-ai">🤖 Gemini</div><div class="chat-assistant">{content}</div>'
+                chat_html += f'<div class="chat-label-ai">🤖 AI Analyst</div><div class="chat-assistant">{content}</div>'
         chat_html += '</div>'
         st.markdown(chat_html, unsafe_allow_html=True)
 
@@ -584,7 +581,7 @@ with tab_chat:
         st.session_state.chat_messages.append({"role": "user", "content": user_input.strip()})
         focus_page = None if focus == "All Pages" else focus
         context = build_tracker_context(db, focus_page)
-        with st.spinner("Gemini is analysing your tracker data…"):
+        with st.spinner("Analysing your tracker data…"):
             reply = ask_claude(st.session_state.chat_messages, context)
         st.session_state.chat_messages.append({"role": "assistant", "content": reply})
         st.rerun()
