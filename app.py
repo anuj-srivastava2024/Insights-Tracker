@@ -4,7 +4,7 @@ import os
 from datetime import date, datetime
 import pandas as pd
 from io import BytesIO
-import anthropic
+import google.generativeai as genai
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -127,33 +127,47 @@ def build_tracker_context(db, focus_page=None):
     lines.append("\n=== END OF TRACKER DATA ===")
     return "\n".join(lines)
 
-# ── Call Claude API ───────────────────────────────────────────────────────────
+# ── Call Gemini API ───────────────────────────────────────────────────────────
 def ask_claude(messages, tracker_context):
-    api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+    """Uses Gemini but kept as ask_claude so rest of code stays unchanged."""
+    api_key = st.secrets.get("GEMINI_API_KEY", "")
     if not api_key:
-        return "⚠️ No Anthropic API key found. Add `ANTHROPIC_API_KEY` to your Streamlit secrets."
+        return "⚠️ No Gemini API key found. Add `GEMINI_API_KEY` to your Streamlit secrets."
     try:
-        client = anthropic.Anthropic(api_key=api_key)
-        system_prompt = f"""You are an expert commodity and futures trade analyst assistant.
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            model_name="gemini-2.0-flash",
+            system_instruction=f"""You are an expert commodity and futures trade analyst assistant.
 You have access to the user's trade observation tracker data below.
 Each page represents a trading session log. Each column is a contract/product.
-Observations include free-text notes and tags like: Absorption, Iceberg, Tool, Extreme Delta, Extreme Volume, Bullish, Bearish.
+Observations include free-text notes and tags: Absorption, Iceberg, Tool, Extreme Delta, Extreme Volume, Bullish, Bearish.
+
+Tag meanings:
+- Absorption: large players absorbing supply/demand — potential reversal signal
+- Iceberg: hidden large orders — institutional interest
+- Extreme Delta: aggressive buying/selling imbalance
+- Extreme Volume: unusually high volume — significant move likely
+- Tool: reference level or key price area
+- Bullish / Bearish: directional bias observed
 
 Use this data to answer questions, identify patterns, and provide actionable trade suggestions.
 Be specific — reference actual dates, contracts, and observations from the data.
-When suggesting trades, explain your reasoning based on the patterns you see.
+When suggesting trades, always explain your reasoning based on the patterns you see.
 
 {tracker_context}"""
-
-        response = client.messages.create(
-            model="claude-opus-4-5",
-            max_tokens=1500,
-            system=system_prompt,
-            messages=messages,
         )
-        return response.content[0].text
+        # Convert message history to Gemini format
+        history = []
+        for msg in messages[:-1]:  # all except last
+            role = "user" if msg["role"] == "user" else "model"
+            history.append({"role": role, "parts": [msg["content"]]})
+
+        chat = model.start_chat(history=history)
+        last_msg = messages[-1]["content"] if messages else ""
+        response = chat.send_message(last_msg)
+        return response.text
     except Exception as e:
-        return f"⚠️ Claude API error: {e}"
+        return f"⚠️ Gemini API error: {e}"
 
 # ── Session state ─────────────────────────────────────────────────────────────
 if "db" not in st.session_state:
@@ -493,7 +507,7 @@ with tab_tracker:
 # ════════════════════════════════════════════════════════════════════
 with tab_chat:
     st.markdown('<div class="page-title">🤖 AI Trade Analyst</div>', unsafe_allow_html=True)
-    st.markdown('<div class="page-sub">Ask Claude anything about your tracker data — it reads all your observations before answering.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-sub">Ask Gemini anything about your tracker data — it reads all your observations before answering.</div>', unsafe_allow_html=True)
 
     # Focus selector
     cf1, cf2 = st.columns([3, 1])
@@ -503,7 +517,7 @@ with tab_chat:
             "📂 Analyse data from:",
             focus_options,
             key="chat_focus_select",
-            help="Narrow Claude's context to one page, or give it everything."
+            help="Narrow Gemini's context to one page, or give it everything."
         )
     with cf2:
         st.write("")
@@ -526,7 +540,7 @@ with tab_chat:
                 st.session_state.chat_messages.append({"role": "user", "content": qp})
                 focus_page = None if focus == "All Pages" else focus
                 context = build_tracker_context(db, focus_page)
-                with st.spinner("Claude is analysing your data…"):
+                with st.spinner("Gemini is analysing your data…"):
                     reply = ask_claude(st.session_state.chat_messages, context)
                 st.session_state.chat_messages.append({"role": "assistant", "content": reply})
                 st.rerun()
@@ -549,7 +563,7 @@ with tab_chat:
             else:
                 # convert newlines to <br> for HTML display
                 content = msg["content"].replace("\n", "<br>")
-                chat_html += f'<div class="chat-label-ai">🤖 Claude</div><div class="chat-assistant">{content}</div>'
+                chat_html += f'<div class="chat-label-ai">🤖 Gemini</div><div class="chat-assistant">{content}</div>'
         chat_html += '</div>'
         st.markdown(chat_html, unsafe_allow_html=True)
 
@@ -570,7 +584,7 @@ with tab_chat:
         st.session_state.chat_messages.append({"role": "user", "content": user_input.strip()})
         focus_page = None if focus == "All Pages" else focus
         context = build_tracker_context(db, focus_page)
-        with st.spinner("Claude is analysing your tracker data…"):
+        with st.spinner("Gemini is analysing your tracker data…"):
             reply = ask_claude(st.session_state.chat_messages, context)
         st.session_state.chat_messages.append({"role": "assistant", "content": reply})
         st.rerun()
