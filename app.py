@@ -136,7 +136,7 @@ def ask_claude(messages, tracker_context):
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
+            model_name="gemini-1.5-flash-latest",
             system_instruction=f"""You are an expert commodity and futures trade analyst assistant.
 You have access to the user's trade observation tracker data below.
 Each page represents a trading session log. Each column is a contract/product.
